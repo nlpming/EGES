@@ -1,4 +1,4 @@
-
+#coding:utf-8
 import numpy as np
 import tensorflow as tf
 
@@ -11,12 +11,12 @@ class EGES_Model:
         self.embedding_dim = embedding_dim
         self.num_nodes = num_nodes
         self.lr = lr
-        self.softmax_w = tf.Variable(tf.truncated_normal((num_nodes, embedding_dim), stddev=0.1), name='softmax_w')
-        self.softmax_b = tf.Variable(tf.zeros(num_nodes), name='softmax_b')
+        self.softmax_w = tf.Variable(tf.truncated_normal((num_nodes, embedding_dim), stddev=0.1), name='softmax_w') #(num_nodes, emb_size)
+        self.softmax_b = tf.Variable(tf.zeros(num_nodes), name='softmax_b') #(num_nodes,)
         self.inputs = self.input_init()
-        self.embedding = self.embedding_init()
-        self.alpha_embedding = tf.Variable(tf.random_uniform((num_nodes, num_feat), -1, 1))
-        self.merge_emb = self.attention_merge()
+        self.embedding = self.embedding_init() #各个特征的embedding lookup table
+        self.alpha_embedding = tf.Variable(tf.random_uniform((num_nodes, num_feat), -1, 1)) #(num_nodes, num_feat)
+        self.merge_emb = self.attention_merge() #(batch_size,emb_size)
         self.cost = self.make_skipgram_loss()
         # self.train_op = tf.train.AdagradOptimizer(lr).minimize(self.cost)
         self.train_op = tf.train.AdamOptimizer(lr).minimize(self.cost)
@@ -33,25 +33,31 @@ class EGES_Model:
         embed_list = []
         num_embed_list = []
         for i in range(self.num_feat):
-            cat_embed = tf.nn.embedding_lookup(self.embedding[i], self.inputs[i])
+            cat_embed = tf.nn.embedding_lookup(self.embedding[i], self.inputs[i]) #(batch_size,emb_size)
             embed_list.append(cat_embed)
-        stack_embed = tf.stack(embed_list, axis=-1)
+        stack_embed = tf.stack(embed_list, axis=-1) #(batch_size,emb_size,num_feat)
         # attention merge
-        alpha_embed = tf.nn.embedding_lookup(self.alpha_embedding, self.inputs[0])
-        alpha_embed_expand = tf.expand_dims(alpha_embed, 1)
-        alpha_i_sum = tf.reduce_sum(tf.exp(alpha_embed_expand), axis=-1)
-        merge_emb = tf.reduce_sum(stack_embed * tf.exp(alpha_embed_expand), axis=-1) / alpha_i_sum
+        alpha_embed = tf.nn.embedding_lookup(self.alpha_embedding, self.inputs[0]) #(batch_size,num_feat)
+        alpha_embed_expand = tf.expand_dims(alpha_embed, 1) #(batch_size,1,num_feat)
+        alpha_i_sum = tf.reduce_sum(tf.exp(alpha_embed_expand), axis=-1) #(batch_size,1)
+        merge_emb = tf.reduce_sum(stack_embed * tf.exp(alpha_embed_expand), axis=-1) / alpha_i_sum #(batch_size,emb_size)
         return merge_emb
 
     def input_init(self):
         input_list = []
         for i in range(self.num_feat):
-            input_col = tf.placeholder(tf.int32, [None], name='inputs_'+str(i))
+            input_col = tf.placeholder(tf.int32, [None], name='inputs_'+str(i)) #(batch_size,)
             input_list.append(input_col)
-        input_list.append(tf.placeholder(tf.int32, shape=[None, 1], name='label'))
+        input_list.append(tf.placeholder(tf.int32, shape=[None, 1], name='label')) #(batch_size,1)
         return input_list
 
     def make_skipgram_loss(self):
+        """skipgram model loss函数
+
+        NOTE:
+            1. tf.nn.sampled_softmax_loss用于实现负采样；
+            2. tf.random.uniform_candidate_sampler获取负采样的样本；
+        """
         loss = tf.reduce_mean(tf.nn.sampled_softmax_loss(
             weights=self.softmax_w,
             biases=self.softmax_b,
@@ -61,10 +67,10 @@ class EGES_Model:
             num_classes=self.num_nodes,
             num_true=1,
             sampled_values=tf.random.uniform_candidate_sampler(
-                true_classes=tf.cast(self.inputs[-1], tf.int64), 
-                num_true=1, 
-                num_sampled=self.n_samped, 
-                unique=True, 
+                true_classes=tf.cast(self.inputs[-1], tf.int64),
+                num_true=1,
+                num_sampled=self.n_samped,
+                unique=True,
                 range_max=self.num_nodes
             )
         ))

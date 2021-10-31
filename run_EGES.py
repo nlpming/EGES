@@ -1,4 +1,6 @@
-
+#coding:utf-8
+import os
+import sys
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -7,10 +9,9 @@ import argparse
 from EGES_model import EGES_Model
 from utils import *
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='manual to this script')
-    parser.add_argument("--batch_size", type=int, default=2048)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--n_sampled", type=int, default=10)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--lr", type=float, default=0.001)
@@ -23,9 +24,9 @@ if __name__ == '__main__':
     # read train_data
     print('read features...')
     start_time = time.time()
-    side_info = np.loadtxt(args.root_path + 'sku_side_info.csv', dtype=np.int32, delimiter='\t')
-    all_pairs = np.loadtxt(args.root_path + 'all_pairs', dtype=np.int32, delimiter=' ')
-    feature_lens = []
+    side_info = np.loadtxt(args.root_path + 'sku_side_info.csv', dtype=np.int32, delimiter='\t') #商品id,品牌,商铺id,类别id
+    all_pairs = np.loadtxt(args.root_path + 'all_pairs', dtype=np.int32, delimiter=' ') #训练数据
+    feature_lens = [] #统计每个特征的长度
     for i in range(side_info.shape[1]):
         tmp_len = len(set(side_info[:, i]))
         feature_lens.append(tmp_len)
@@ -54,10 +55,14 @@ if __name__ == '__main__':
     max_iter = len(all_pairs)//args.batch_size*args.epochs
     for iter in range(max_iter):
         iteration += 1
+        # 生成训练样本；
         batch_features, batch_labels = next(graph_context_batch_iter(all_pairs, args.batch_size, side_info,
                                                                      args.num_feat))
+        # 构建feed_dict
         feed_dict = {input_col: batch_features[:, i] for i, input_col in enumerate(EGES.inputs[:-1])}
         feed_dict[EGES.inputs[-1]] = batch_labels
+
+        # 执行一次mini-batch梯度下降
         _, train_loss = sess.run([EGES.train_op, EGES.cost], feed_dict=feed_dict)
 
         loss += train_loss
@@ -72,18 +77,21 @@ if __name__ == '__main__':
             loss = 0
             start = time.time()
 
+    #保存模型
     print('optimization finished...')
     saver = tf.train.Saver()
     saver.save(sess, "checkpoints/EGES")
 
-
     feed_dict_test = {input_col: list(side_info[:, i]) for i, input_col in enumerate(EGES.inputs[:-1])}
     feed_dict_test[EGES.inputs[-1]] = np.zeros((len(side_info), 1), dtype=np.int32)
-    embedding_result = sess.run(EGES.merge_emb, feed_dict=feed_dict_test)
+    embedding_result = sess.run(EGES.merge_emb, feed_dict=feed_dict_test) #merge_emb是最终商品的emb
+
+    if not os.path.exists("./embedding"):
+        os.mkdir("./embedding")
     print('saving embedding result...')
     write_embedding(embedding_result, args.outputEmbedFile)
 
     print('visualization...')
-    plot_embeddings(embedding_result[:5000, :], side_info[:5000, :])
+    #plot_embeddings(embedding_result[:5000, :], side_info[:5000, :])
 
 

@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
-
 def plot_embeddings(embebed_mat, side_info_mat):
     model = TSNE(n_components=2)
     node_pos = model.fit_transform(embebed_mat)
@@ -33,15 +32,12 @@ def plot_embeddings(embebed_mat, side_info_mat):
     plt.title('cate distribution')
     plt.savefig('./data_cache/cate_dist.png')
 
-
-
 def write_embedding(embedding_result, outputFileName):
     f = open(outputFileName, 'w')
     for i in range(len(embedding_result)):
         s = " ".join(str(f) for f in embedding_result[i].tolist())
         f.write(s + "\n")
     f.close()
-
 
 def graph_context_batch_iter(all_pairs, batch_size, side_info, num_features):
     while True:
